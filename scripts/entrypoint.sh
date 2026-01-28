@@ -140,7 +140,7 @@ try:
         print(f\"  Requested:       {data.get('requested_articles', 'N/A')} articles\")
         print(f\"  Fetched:         {data.get('fetched_articles', 'N/A')} articles\")
         print(f\"  Saved:           {data.get('saved_articles', 'N/A')} articles\")
-except Exception as e:
+except (json.JSONDecodeError, IOError, KeyError) as e:
     print(f'  (Could not parse summary: {e})')
 " 2>/dev/null || true
             echo ""

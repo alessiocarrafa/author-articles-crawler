@@ -29,9 +29,23 @@ class WordPressCrawler:
             num_articles: Number of articles to fetch
             output_dir: Directory to save markdown files
         """
-        self.wordpress_url = wordpress_url.rstrip('/')
+        # Validate and sanitize WordPress URL
+        wordpress_url = wordpress_url.rstrip('/')
+        parsed = urlparse(wordpress_url)
+        if parsed.scheme not in ('http', 'https'):
+            raise ValueError(f"Invalid URL scheme: {parsed.scheme}. Must be http or https.")
+        
+        self.wordpress_url = wordpress_url
         self.author_name = author_name
-        self.num_articles = int(num_articles)
+        
+        # Validate number of articles
+        try:
+            self.num_articles = int(num_articles)
+            if self.num_articles < 1:
+                raise ValueError("Number of articles must be positive")
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid number of articles: {num_articles}") from e
+        
         self.output_dir = Path(output_dir)
         self.api_base = urljoin(self.wordpress_url + '/', 'wp-json/wp/v2/')
         
@@ -56,20 +70,25 @@ class WordPressCrawler:
         text = re.sub(r'\s+', '_', text)
         # Limit length
         text = text[:200]
-        return text.strip('_')
+        text = text.strip('_')
+        # Fallback for empty or invalid filenames
+        if not text:
+            text = 'untitled'
+        return text
 
     def get_author_id(self):
         """Get author ID from author name or slug."""
         print(f"🔍 Looking up author: {self.author_name}")
         
         # Try to find author by slug first
-        url = urljoin(self.api_base, f'users?slug={self.author_name}')
+        params = {'slug': self.author_name}
+        url = urljoin(self.api_base, 'users')
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
             users = response.json()
             
-            if users and len(users) > 0:
+            if users:
                 author_id = users[0]['id']
                 author_name = users[0].get('name', self.author_name)
                 print(f"✓ Found author: {author_name} (ID: {author_id})")
@@ -78,13 +97,14 @@ class WordPressCrawler:
             print(f"  Note: Could not find by slug: {e}")
         
         # Try searching by name
-        url = urljoin(self.api_base, f'users?search={self.author_name}')
+        params = {'search': self.author_name}
+        url = urljoin(self.api_base, 'users')
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
             users = response.json()
             
-            if users and len(users) > 0:
+            if users:
                 # Use first match
                 author_id = users[0]['id']
                 author_name = users[0].get('name', self.author_name)
@@ -120,7 +140,7 @@ class WordPressCrawler:
                 'per_page': per_page,
                 'orderby': 'date',
                 'order': 'desc',
-                '_embed': 'true'  # Include embedded data like author info
+                '_embed': True  # Include embedded data like author info
             }
             
             if author_id:
@@ -182,14 +202,14 @@ class WordPressCrawler:
         try:
             date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
             date_formatted = date_obj.strftime('%Y-%m-%d')
-        except:
+        except (ValueError, AttributeError):
             date_formatted = 'unknown-date'
         
         # Get author name
         author = 'Unknown'
         if '_embedded' in article and 'author' in article['_embedded']:
             author_data = article['_embedded']['author']
-            if isinstance(author_data, list) and len(author_data) > 0:
+            if isinstance(author_data, list) and author_data:
                 author = author_data[0].get('name', 'Unknown')
         
         # Convert HTML to Markdown
@@ -209,9 +229,10 @@ class WordPressCrawler:
         
         markdown += content_md
         
-        # Generate filename
+        # Generate filename with article ID for uniqueness
+        article_id = article.get('id', 'unknown')
         title_safe = self.sanitize_filename(title)
-        filename = f"{date_formatted}_{title_safe}.md"
+        filename = f"{date_formatted}_{article_id}_{title_safe}.md"
         
         return filename, markdown
 

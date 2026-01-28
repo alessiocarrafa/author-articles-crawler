@@ -102,7 +102,7 @@ Brief excerpt or summary...
 Article content converted to Markdown...
 ```
 
-**Filename format:** `YYYY-MM-DD_Article_Title.md`
+**Filename format:** `YYYY-MM-DD_<article-id>_Article_Title.md`
 
 ### Summary File
 
